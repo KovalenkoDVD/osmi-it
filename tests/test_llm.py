@@ -179,3 +179,42 @@ def test_sources_attributed_when_model_skips_citations():
     )
     cited = attribute_sources(answer, group_sources(hits))
     assert [s.url for s in cited] == ["https://osmi-it.ru/decisions/"]
+
+
+def test_openai_compatible_falls_back_on_overload(stub_server):
+    class Overloaded(_Stub):
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["content-length"])))
+            _Stub.requests.append({"body": body})
+            if body["model"] == "main-model":
+                payload, code = b'{"error": {"code": 503, "message": "high demand"}}', 503
+            else:
+                payload, code = json.dumps(_Stub.response).encode(), 200
+            self.send_response(code)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    server = HTTPServer(("127.0.0.1", 0), Overloaded)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    _Stub.requests = []
+    _Stub.response = {
+        "id": "c2",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "backup-model",
+        "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "ok"}}],
+    }
+    settings = Settings(
+        _env_file=None,
+        llm_model="main-model",
+        llm_fallback_model="backup-model",
+        openai_base_url=f"http://127.0.0.1:{server.server_port}/v1",
+    )
+    llm = OpenAICompatibleLLM(settings)
+    llm.client = llm.client.with_options(max_retries=0)
+    result = asyncio.run(llm.generate("s", [{"role": "user", "content": "q"}]))
+    server.shutdown()
+    assert result.text == "ok" and result.model == "backup-model"
+    assert [r["body"]["model"] for r in _Stub.requests] == ["main-model", "backup-model"]

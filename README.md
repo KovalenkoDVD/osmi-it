@@ -1,5 +1,7 @@
 # OSMI RAG Bot
 
+**Демо:** [@osmi_rag_bot](https://t.me/osmi_rag_bot)
+
 Telegram-бот на **aiogram 3**, который отвечает на вопросы об OSMI IT и платформе OSMI AI.
 Знания бот берёт из векторной базы на **PostgreSQL + pgvector**, в которую проиндексированы сайты
 [osmi-it.ru](https://osmi-it.ru), [osmi-ai.ru](https://osmi-ai.ru) и документация
@@ -11,7 +13,7 @@ Telegram-бот на **aiogram 3**, который отвечает на воп�
 ## Быстрый старт
 
 ```bash
-cp .env.example .env        # впишите BOT_TOKEN и ANTHROPIC_API_KEY (или другой LLM, см. ниже)
+cp .env.example .env        # впишите BOT_TOKEN и ключ LLM: GEMINI_API_KEY (бесплатно) или ANTHROPIC_API_KEY
 docker compose up -d --build
 docker compose logs -f bot
 ```

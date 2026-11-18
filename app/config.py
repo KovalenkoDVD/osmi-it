@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     llm_model: str = "claude-opus-5-5"
     # Claude effort level: low | medium | high | xhigh | max. "low" keeps chat replies fast.
     llm_effort: str = "low"
+    # Backup model on the same provider, used when the main one is overloaded or out of quota.
+    llm_fallback_model: str = ""
     llm_max_tokens: int = 4000
     llm_timeout: float = 90.0
     # Claude: retry a safety-classifier refusal on another model server-side.

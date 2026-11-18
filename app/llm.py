@@ -107,19 +107,28 @@ class OpenAICompatibleLLM:
             api_key=api_key or settings.openai_api_key or "not-needed",
             base_url=base_url or settings.openai_base_url,
             timeout=settings.llm_timeout,
-            max_retries=3,
+            max_retries=2,
         )
         self.model = settings.llm_model
+        self.fallback_model = settings.llm_fallback_model
         self.max_tokens = settings.llm_max_tokens
 
     async def generate(self, system: str, messages: list[Message]) -> LLMResult:
         openai = self._openai
+        chat = [{"role": "system", "content": system}, *messages]
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                messages=[{"role": "system", "content": system}, *messages],
-            )
+            try:
+                response = await self.client.chat.completions.create(
+                    model=self.model, max_tokens=self.max_tokens, messages=chat
+                )
+            except (openai.RateLimitError, openai.InternalServerError, openai.NotFoundError) as exc:
+                # Free tiers are often overloaded (503) or out of quota (429): try the backup model.
+                if not self.fallback_model:
+                    raise
+                log.warning("%s failed (%s), falling back to %s", self.model, exc.status_code, self.fallback_model)
+                response = await self.client.chat.completions.create(
+                    model=self.fallback_model, max_tokens=self.max_tokens, messages=chat
+                )
         except openai.AuthenticationError as exc:
             raise LLMError("Неверный ключ OPENAI_API_KEY.") from exc
         except openai.RateLimitError as exc:

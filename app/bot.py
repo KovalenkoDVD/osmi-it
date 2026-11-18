@@ -36,6 +36,19 @@ EXAMPLES = [
     "Какие LLM поддерживает OSMI AI?",
 ]
 
+# Bot profile shown in Telegram (set automatically on startup, see sync_profile).
+BOT_DESCRIPTION = (  # "What can this bot do?" screen, up to 512 characters
+    "Демо RAG-ассистента по сайтам OSMI IT и OSMI AI: osmi-it.ru, osmi-ai.ru и docs.osmi-ai.ru.\n\n"
+    "Отвечает только по данным сайтов и даёт ссылки на источники: услуги и решения, кейсы, "
+    "платформа OSMI AI и её документация, контакты, реквизиты.\n\n"
+    "Стек: aiogram 3, PostgreSQL + pgvector, гибридный поиск (вектор + BM25, RRF), Gemini / Claude, Docker.\n"
+    "Код: github.com/KovalenkoDVD/osmi-it\n\n"
+    "Тестовое задание к вакансии LLM-engineer в OSMI IT."
+)
+BOT_SHORT_DESCRIPTION = (  # profile "About", up to 120 characters
+    "RAG-ассистент по сайтам OSMI IT и OSMI AI: отвечает по данным сайтов со ссылками на источники"
+)
+
 HELP_TEXT = (
     "Я отвечаю на вопросы об <b>OSMI IT</b> и платформе <b>OSMI AI</b> по материалам сайтов "
     "osmi-it.ru, osmi-ai.ru и docs.osmi-ai.ru: услуги, кейсы, платформа и её API, интеграции, "
@@ -178,6 +191,25 @@ async def ingest(state: State, *, full: bool = False):
             return None
 
 
+async def sync_profile(bot: Bot) -> None:
+    """Fill the bot's description and "About" so nothing has to be typed into @BotFather.
+
+    A description that does not mention OSMI belongs to some other bot (wrong token in .env):
+    it is left untouched instead of being overwritten.
+    """
+    try:
+        current = (await bot.get_my_description()).description
+        if current and "OSMI" not in current.upper():
+            log.warning("Bot already has a foreign description: profile is not changed (check BOT_TOKEN)")
+            return
+        if current != BOT_DESCRIPTION:
+            await bot.set_my_description(description=BOT_DESCRIPTION)
+        if (await bot.get_my_short_description()).short_description != BOT_SHORT_DESCRIPTION:
+            await bot.set_my_short_description(short_description=BOT_SHORT_DESCRIPTION)
+    except Exception:  # profile cosmetics must never stop the bot
+        log.exception("Could not update bot profile")
+
+
 async def main() -> None:
     settings = get_settings()
     logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -201,6 +233,7 @@ async def main() -> None:
         settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML, link_preview=LinkPreviewOptions(is_disabled=True)),
     )
+    await sync_profile(bot)
     await bot.set_my_commands(
         [
             BotCommand(command="start", description="Начать"),

@@ -156,3 +156,10 @@ def test_lists_and_descriptions_stay_separate():
     text = chunks[0].content
     assert "Единая ИИ-платформа." in text and "- Единая" not in text  # description is not a list item
     assert "Продуктовые модули\n- ИИ для АПО.\n- ИИ-агент для дольщиков." in text
+
+
+def test_bot_profile_texts_fit_telegram_limits():
+    from app.bot import BOT_DESCRIPTION, BOT_SHORT_DESCRIPTION
+
+    assert len(BOT_DESCRIPTION) <= 512
+    assert len(BOT_SHORT_DESCRIPTION) <= 120
