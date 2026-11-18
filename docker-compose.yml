@@ -1,0 +1,81 @@
+x-app: &app
+  build: .
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql://${POSTGRES_USER:-rag}:${POSTGRES_PASSWORD:-rag}@db:5432/${POSTGRES_DB:-rag}
+    FASTEMBED_CACHE_DIR: /models
+  volumes:
+    - models:/models
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag}
+      POSTGRES_DB: ${POSTGRES_DB:-rag}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  bot:
+    <<: *app
+    restart: unless-stopped
+
+  # One-off knowledge-base refresh:  docker compose run --rm ingest [--full]
+  ingest:
+    <<: *app
+    profiles: ["tools"]
+    entrypoint: ["python", "-m", "app.ingest"]
+
+  # Retrieval quality check:  docker compose run --rm eval
+  eval:
+    <<: *app
+    profiles: ["tools"]
+    entrypoint: ["python", "-m", "eval.run_eval"]
+
+  # --- Local LLM (optional):  docker compose --profile local-llm up -d ---------------
+  # The model knows nothing about OSMI: everything it says comes from the retrieved chunks.
+  ollama:
+    image: ollama/ollama:0.40.16
+    profiles: ["local-llm"]
+    restart: unless-stopped
+    environment:
+      # Ollama's default context is too small for 8 retrieved chunks + history.
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-8192}
+      OLLAMA_KEEP_ALIVE: 24h
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Downloads the model once into the "ollama" volume, then exits.
+  ollama-pull:
+    image: ollama/ollama:0.40.16
+    profiles: ["local-llm"]
+    environment:
+      OLLAMA_HOST: ollama:11434
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-qwen2.5:3b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  models:
+  ollama:
